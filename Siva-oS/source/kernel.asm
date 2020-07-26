@@ -157,15 +157,25 @@ _cmd_HardwareInfo:
 
 
 	call _cmd_cpuVendorID
-	
 	call _serial_ports
 	call _cmd_ProcessorType
 	call _hard_info
+	call _cmd_memoryinfo
 	
 	call _display_endl
+	call _bottom
 	
 	
 	jmp _cmd_done
+	
+	_bottom:
+	call _display_endl
+	mov si, underline
+	mov al, 0x01
+	int 0x21
+	call _display_endl
+	ret
+	
 	
 	_cmd_cpuVendorID:
 		call _display_endl
@@ -220,7 +230,112 @@ _cmd_HardwareInfo:
 		ret
 	
 
+	_cmd_memoryinfo:
+		ret
+		push ax
+		push bx
+		push cx
+		push dx
+		push es
+		push si
+
+		call _display_endl
+		mov si, strmem	; Prints base memory string
+		mov al, 0x01
+		int 0x21
+		
+		; Reading Base Memory -----------------------------------------------
+		push ax
+		push dx
+		
+		int 0x12		; call interrupt 12 to get base mem size
+		mov dx,ax 
+		mov [basemem] , ax
+		call _print_dec		; display the number in decimal
+		mov al, 0x6b
+		mov ah, 0x0E            ; BIOS teletype acts on 'K' 
+		mov bh, 0x00
+		mov bl, 0x07
+		int 0x10
+		mov si, basemem	; Prints base memory string
+		mov al, 0x01
+		int 0x21
 	
+		
+
+		
+		pop dx
+		pop ax
+
+		; Reading extended Memory
+		call _display_endl
+		mov si, strsmallext
+		mov al, 0x01
+		int 0x21
+		
+		xor cx, cx		; Clear CX
+		xor dx, dx		; clear DX
+		mov ax, 0xE801
+		int 0x15		; call interrupt 15h
+		mov dx, ax		; save memory value in DX as the procedure argument
+		mov [extmem1], ax
+		call _print_dec		; print the decimal value in DX
+		mov al, 0x6b
+		mov ah, 0x0E            ; BIOS teletype acts on 'K'
+		mov bh, 0x00
+		mov bl, 0x07
+		int 0x10
+		
+		xor cx, cx		; clear CX
+		xor dx, dx		; clear DX
+		mov ax, 0xE801
+		int 0x15		; call interrupt 15h
+		mov ax, dx		; save memory value in AX for division
+		xor dx, dx
+		mov si , 16
+		div si			; divide AX value to get the number of MB
+		mov dx, ax
+		mov [extmem2], ax
+		push dx			; save dx value
+
+		call _display_endl
+		mov si, strbigext
+		mov al, 0x01
+		int 0x21
+		
+		pop dx			; retrieve DX for printing
+		call _print_dec
+		mov al, 0x4D
+		mov ah, 0x0E            ; BIOS teletype acts on 'M'
+		mov bh, 0x00
+		mov bl, 0x07
+		int 0x10
+
+		call _display_endl
+		mov si, strtotmem
+		mov al, 0x01
+		int 0x21
+
+		; total memory = basemem + extmem1 + extmem2
+		mov ax, [basemem]	
+		add ax, [extmem1]	; ax = ax + extmem1
+		shr ax, 10
+		add ax, [extmem2]	; ax = ax + extmem2
+		mov dx, ax
+		call _print_dec
+		mov al, 0x4D            
+		mov ah, 0x0E            ; BIOS teletype acts on 'M'
+		mov bh, 0x00
+		mov bl, 0x07
+		int 0x10
+		pop si
+		pop es
+		pop dx
+		pop cx
+		pop bx
+		pop ax
+		ret
+		
 	
 	_hard_info:
 		call _display_endl
@@ -692,10 +807,16 @@ _print_dec:
 
 
 [SEGMENT .data]
-strtypeofcpu		db	"CPU Type: ", 0x00
-strhard		db	"NO of hard drives in this OS: ",0x00
-strserialportno	db	"Number of serial ports: ", 0x00
-strport1		db	"Base I/O address for serial port 1 (communications port 1 - COM 1): ", 0x00
+	strtypeofcpu		db	"CPU Type: ", 0x00
+	strhard		db	"NO of hard drives in this OS: ",0x00
+	strserialportno	db	"Number of serial ports: ", 0x00
+	strport1		db	"Base I/O address for serial port 1 (communications port 1 - COM 1): ", 0x00
+	strtotmem		db	"Total memory: ",0x00
+	underline		db      "___________________________________",0x00
+	
+	strmem		db	"Base Memory size: ", 0x00
+	strsmallext	db	"Extended memory between(1M - 16M): ", 0x00
+	strbigext		db      "Extended memory above 16M: ", 0x00
 		
     strWelcomeMsg   		db  "Welcome to **SivA-OS 6.3.9** type 'help' to display the features in this OS", 0x00
 	strPrompt		db	"Siva-oS>>", 0x00
@@ -711,14 +832,6 @@ strport1		db	"Base I/O address for serial port 1 (communications port 1 - COM 1)
 	strHelpMsg3		db  "Type 'exit' ==> rebooting the system",0x00
 	strHelpMsg4		db  "Type 'greet'==> recive the greeting message from the machine",0x00
 	strHelpMsg5		db  "Type 'give1star' or 'give2stars' or 'give3stars' or 'give4stars' or 'give5stars' ==> rating this OS",0x00
-	
-	
-	
-	
-	
-	
-	
-	
 	
 	
 	greetMsg1		db   "                       *** Wel come to this Siva-OS ***",0x00
@@ -768,10 +881,12 @@ strport1		db	"Base I/O address for serial port 1 (communications port 1 - COM 1)
 	
 	strVendorID		resb	16
 	strcputype		resb	64
+	basemem		resb	2
+	extmem1		resb	2
+	extmem2		resb	2
 	
 	
 	
 	
 
 ;********************end of the kernel code********************
-
